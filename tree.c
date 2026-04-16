@@ -132,13 +132,22 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 // Returns 0 on success, -1 on error.
 int tree_from_index(ObjectID *id_out) {
     Index index;
-    if (index_load(&index) != 0) {
-        return -1;
-    }
+    if (index_load(&index) != 0) return -1;
 
-    printf("TREE INPUT:\n");
     for (int i = 0; i < index.count; i++) {
-        printf("  %s\n", index.entries[i].path);
+        char *slash = strchr(index.entries[i].path, '/');
+
+        if (!slash) {
+            printf("FILE: %s\n", index.entries[i].path);
+        } else {
+            char dir[256];
+            int len = slash - index.entries[i].path;
+
+            strncpy(dir, index.entries[i].path, len);
+            dir[len] = '\0';
+
+            printf("DIR: %s\n", dir);
+        }
     }
 
     (void)id_out;

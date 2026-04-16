@@ -197,26 +197,26 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     ObjectID tree_id;
     if (tree_from_index(&tree_id) != 0) return -1;
 
-    char hex[HASH_HEX_SIZE + 1];
-    hash_to_hex(&tree_id, hex);
-    printf("TREE: %s\n", hex);
+    Commit c;
+    memset(&c, 0, sizeof(Commit));
 
-    ObjectID parent_id;
-    int has_parent = (head_read(&parent_id) == 0);
+    c.tree = tree_id;
 
-    if (has_parent) {
-        char phex[HASH_HEX_SIZE + 1];
-        hash_to_hex(&parent_id, phex);
-        printf("PARENT: %s\n", phex);
+    if (head_read(&c.parent) == 0) {
+        c.has_parent = 1;
     } else {
-        printf("NO PARENT\n");
+        c.has_parent = 0;
     }
-    head_update(&tree_id);
+
+    snprintf(c.author, sizeof(c.author), "%s", pes_author());
+    c.timestamp = (uint64_t)time(NULL);
+    snprintf(c.message, sizeof(c.message), "%s", message);
+
+    printf("COMMIT STRUCT READY\n");
 
     if (commit_id_out) {
-        *commit_id_out = tree_id;
+        *commit_id_out = tree_id;  // temporary
     }
 
-    (void)message;
     return 0;
 }

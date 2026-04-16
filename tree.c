@@ -130,41 +130,60 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
 // Returns 0 on success, -1 on error.
-int tree_from_index(ObjectID *id_out) {
-    Index index;
-    if (index_load(&index) != 0) return -1;
-
+static void build_level(IndexEntry *entries, int count) {
     int i = 0;
-    while (i < index.count) {
-        char *slash = strchr(index.entries[i].path, '/');
+
+    while (i < count) {
+        char *slash = strchr(entries[i].path, '/');
 
         if (!slash) {
-            printf("ROOT FILE: %s\n", index.entries[i].path);
+            printf("FILE: %s\n", entries[i].path);
             i++;
         } else {
             char dir[256];
-            int len = slash - index.entries[i].path;
+            int len = slash - entries[i].path;
 
-            strncpy(dir, index.entries[i].path, len);
+            strncpy(dir, entries[i].path, len);
             dir[len] = '\0';
 
-            printf("\nGROUP: %s\n", dir);
+            printf("ENTER DIR: %s\n", dir);
+
+            IndexEntry sub[MAX_INDEX_ENTRIES];
+            int sub_count = 0;
 
             int j = i;
-            while (j < index.count) {
-                if (strncmp(index.entries[j].path, dir, len) == 0 &&
-                    index.entries[j].path[len] == '/') {
+            while (j < count) {
+                if (strncmp(entries[j].path, dir, len) == 0 &&
+                    entries[j].path[len] == '/') {
 
-                    printf("  CHILD: %s\n", index.entries[j].path);
+                    sub[sub_count] = entries[j];
+
+                    strcpy(sub[sub_count].path,
+                           entries[j].path + len + 1);
+
+                    printf("  SUB: %s\n", sub[sub_count].path);
+
+                    sub_count++;
                     j++;
                 } else {
                     break;
                 }
             }
 
+            build_level(sub, sub_count);
+
+            printf("EXIT DIR: %s\n", dir);
+
             i = j;
         }
     }
+}
+
+int tree_from_index(ObjectID *id_out) {
+    Index index;
+    if (index_load(&index) != 0) return -1;
+
+    build_level(index.entries, index.count);
 
     (void)id_out;
     return 0;

@@ -11,6 +11,7 @@
 
 #include "tree.h"
 #include "index.h"
+#include "object.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,14 +131,21 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
 // Returns 0 on success, -1 on error.
-static void build_level(IndexEntry *entries, int count) {
-    int i = 0;
+static int write_level(IndexEntry *entries, int count, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
 
+    int i = 0;
     while (i < count) {
         char *slash = strchr(entries[i].path, '/');
 
         if (!slash) {
-            printf("FILE: %s\n", entries[i].path);
+            TreeEntry *e = &tree.entries[tree.count++];
+
+            e->mode = entries[i].mode;
+            strcpy(e->name, entries[i].path);
+            e->hash = entries[i].hash;
+
             i++;
         } else {
             char dir[256];
@@ -145,8 +153,6 @@ static void build_level(IndexEntry *entries, int count) {
 
             strncpy(dir, entries[i].path, len);
             dir[len] = '\0';
-
-            printf("ENTER DIR: %s\n", dir);
 
             IndexEntry sub[MAX_INDEX_ENTRIES];
             int sub_count = 0;
@@ -157,11 +163,8 @@ static void build_level(IndexEntry *entries, int count) {
                     entries[j].path[len] == '/') {
 
                     sub[sub_count] = entries[j];
-
                     strcpy(sub[sub_count].path,
                            entries[j].path + len + 1);
-
-                    printf("  SUB: %s\n", sub[sub_count].path);
 
                     sub_count++;
                     j++;
@@ -170,21 +173,37 @@ static void build_level(IndexEntry *entries, int count) {
                 }
             }
 
-            build_level(sub, sub_count);
+            ObjectID sub_id;
+            if (write_level(sub, sub_count, &sub_id) != 0) {
+                return -1;
+            }
 
-            printf("EXIT DIR: %s\n", dir);
+            TreeEntry *e = &tree.entries[tree.count++];
+            e->mode = MODE_DIR;
+            strcpy(e->name, dir);
+            e->hash = sub_id;
 
             i = j;
         }
     }
+
+    void *data;
+    size_t len;
+
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+
+    if (object_write(OBJ_TREE, data, len, id_out) != 0) {
+        free(data);
+        return -1;
+    }
+
+    free(data);
+    return 0;
 }
 
 int tree_from_index(ObjectID *id_out) {
     Index index;
     if (index_load(&index) != 0) return -1;
 
-    build_level(index.entries, index.count);
-
-    (void)id_out;
-    return 0;
+    return write_level(index.entries, index.count, id_out);
 }

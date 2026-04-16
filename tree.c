@@ -134,11 +134,13 @@ int tree_from_index(ObjectID *id_out) {
     Index index;
     if (index_load(&index) != 0) return -1;
 
-    for (int i = 0; i < index.count; i++) {
+    int i = 0;
+    while (i < index.count) {
         char *slash = strchr(index.entries[i].path, '/');
 
         if (!slash) {
-            printf("FILE: %s\n", index.entries[i].path);
+            printf("ROOT FILE: %s\n", index.entries[i].path);
+            i++;
         } else {
             char dir[256];
             int len = slash - index.entries[i].path;
@@ -146,7 +148,21 @@ int tree_from_index(ObjectID *id_out) {
             strncpy(dir, index.entries[i].path, len);
             dir[len] = '\0';
 
-            printf("DIR: %s\n", dir);
+            printf("\nGROUP: %s\n", dir);
+
+            int j = i;
+            while (j < index.count) {
+                if (strncmp(index.entries[j].path, dir, len) == 0 &&
+                    index.entries[j].path[len] == '/') {
+
+                    printf("  CHILD: %s\n", index.entries[j].path);
+                    j++;
+                } else {
+                    break;
+                }
+            }
+
+            i = j;
         }
     }
 

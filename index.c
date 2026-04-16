@@ -16,6 +16,8 @@
 // TODO functions:     index_load, index_save, index_add
 
 #include "index.h"
+#include "tree.h"
+#include "object.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -156,8 +158,6 @@ int index_load(Index *index) {
             return -1;
         }
 
-        printf("LOAD: %s\n", e->path);
-
         index->count++;
     }
 
@@ -180,22 +180,24 @@ static int compare_index_entries(const void *a, const void *b) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
-    Index copy = *index;
+    Index *copy = malloc(sizeof(Index));
+    if (!copy) return -1;
 
-    qsort(copy.entries, copy.count, sizeof(IndexEntry), compare_index_entries);
+    memcpy(copy, index, sizeof(Index));
+
+    qsort(copy->entries, copy->count, sizeof(IndexEntry), compare_index_entries);
 
     FILE *f = fopen(INDEX_FILE ".tmp", "w");
     if (!f) return -1;
 
-    for (int i = 0; i < copy.count; i++) {
+    for (int i = 0; i < copy->count; i++) {
         char hex[HASH_HEX_SIZE + 1];
-        hash_to_hex(&copy.entries[i].hash, hex);
+        hash_to_hex(&copy->entries[i].hash, hex);
 
-        fprintf(f, "%o %s %lu %u %s\n", copy.entries[i].mode, hex, copy.entries[i].mtime_sec, copy.entries[i].size, copy.entries[i].path);
-
-        printf("SAVE SORTED: %s\n", copy.entries[i].path);
+        fprintf(f, "%o %s %lu %u %s\n", copy->entries[i].mode, hex, copy->entries[i].mtime_sec, copy->entries[i].size, copy->entries[i].path);
     }
 
+    free(copy);
     fflush(f);
     fsync(fileno(f));
     fclose(f);
@@ -204,8 +206,6 @@ int index_save(const Index *index) {
 
     return 0;
 }
-
-int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
 
 // Stage a file for the next commit.
 //
@@ -224,7 +224,7 @@ int index_add(Index *index, const char *path) {
     size_t size = ftell(f);
     rewind(f);
 
-    void *buf = malloc(size);
+    void *buf = malloc(size ? size : 1);
     if (!buf) {
         fclose(f);
         return -1;
@@ -244,18 +244,20 @@ int index_add(Index *index, const char *path) {
     struct stat st;
     if (stat(path, &st) != 0) return -1;
 
-    printf("ADD: %s\n", path);
-
     IndexEntry *e = index_find(index, path);
     if (!e) {
+        if (index->count >= MAX_INDEX_ENTRIES) {
+            return -1;
+        }
         e = &index->entries[index->count++];
     }
 
-    e->mode = st.st_mode;
+    e->mode = get_file_mode(path);
     e->hash = id;
     e->mtime_sec = st.st_mtime;
     e->size = st.st_size;
-    strcpy(e->path, path);
+    strncpy(e->path, path, sizeof(e->path) - 1);
+    e->path[sizeof(e->path) - 1] = '\0';
 
     return index_save(index);
 }

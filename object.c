@@ -251,9 +251,55 @@ int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_
         return -1;
     }
 
-    char hash_str[HASH_HEX_SIZE + 1];
-    hash_to_hex(&computed, hash_str);
-    printf("HASH: %s\n", hash_str);
+    void *nul = memchr(buf, '\0', file_size);
+    if (!nul) {
+        free(buf);
+        return -1;
+    }
 
-    return -1;
+    size_t header_len = (unsigned char *)nul - buf;
+    char *header = (char *)buf;
+
+    char type_str[16];
+    size_t size;
+
+    if (sscanf(header, "%15s %zu", type_str, &size) != 2) {
+        free(buf);
+        return -1;
+    }
+
+    ObjectType type;
+    if (strcmp(type_str, "blob") == 0) {
+        type = OBJ_BLOB;
+    } else if (strcmp(type_str, "tree") == 0) {
+        type = OBJ_TREE;
+    } else if (strcmp(type_str, "commit") == 0) {
+        type = OBJ_COMMIT;
+    } else {
+        free(buf);
+        return -1;
+    }
+
+    unsigned char *data_start = (unsigned char *)nul + 1;
+    size_t data_len = file_size - (header_len + 1);
+
+    if (data_len != size) {
+        free(buf);
+        return -1;
+    }
+
+    void *out = malloc(data_len);
+    if (!out) {
+        free(buf);
+        return -1;
+    }
+
+    memcpy(out, data_start, data_len);
+
+    *type_out = type;
+    *data_out = out;
+    *len_out = data_len;
+
+    free(buf);
+    return 0;
 }
